@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  skinProfile  SkinProfile?
+  reviews Review[]
+
+}
+
+model SkinProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  skinType      String   // "oily" | "dry" | "combination" | "normal" | "sensitive"
+  concerns      String[] // e.g. ["acne", "pigmentation", "dryness"]
+  sensitivities String[] // e.g. ["fragrance", "alcohol"]
+  goals         String[] // e.g. ["clear skin", "anti-aging", "even tone"]
+  climateZone   String?  // e.g. "humid", "dry", "temperate" — can auto-fill from weather later
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  brand       String
+  category    String   // "cleanser" | "serum" | "moisturizer" | "sunscreen" | "toner"
+  ingredients String[]
+  price       Float
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  reviews Review[]
+}
+
+
+model Review {
+  id                 String   @id @default(uuid())
+  productId          String
+  product            Product  @relation(fields: [productId], references: [id])
+  userId             String
+  user               User     @relation(fields: [userId], references: [id])
+  rating             Int
+  title              String?
+  comment            String
+  skinType           String?
+  concerns           String[]
+  isAnonymous        Boolean  @default(false)
+  isVerifiedPurchase Boolean  @default(false)
+  createdAt          DateTime @default(now())
+}
