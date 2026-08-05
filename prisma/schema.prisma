@@ -7,50 +7,39 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id           String       @id @default(uuid())
-  email        String       @unique
-  name         String
-  passwordHash String
-  createdAt    DateTime     @default(now())
-  skinProfile  SkinProfile?
-  reviews Review[]
-
-}
-
 model SkinProfile {
   id            String   @id @default(uuid())
   userId        String   @unique
-  user          User     @relation(fields: [userId], references: [id])
-  skinType      String   // "oily" | "dry" | "combination" | "normal" | "sensitive"
-  concerns      String[] // e.g. ["acne", "pigmentation", "dryness"]
-  sensitivities String[] // e.g. ["fragrance", "alcohol"]
-  goals         String[] // e.g. ["clear skin", "anti-aging", "even tone"]
-  climateZone   String?  // e.g. "humid", "dry", "temperate" — can auto-fill from weather later
+  skinType      String
+  concerns      String[]
+  sensitivities String[]
+  goals         String[]
+  climateZone   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id])
 }
-
 
 model Product {
   id          String   @id @default(uuid())
   name        String
   brand       String
-  category    String   // "cleanser" | "serum" | "moisturizer" | "sunscreen" | "toner"
+  category    String
   ingredients String[]
   price       Float
   imageUrl    String?
+  barcode     String?  @unique  // NEW
   createdAt   DateTime @default(now())
-  reviews Review[]
+  reviews     Review[]
+  routineSteps RoutineStep[]
+  recommendations Recommendation[]
+  userProducts UserProduct[]
 }
-
 
 model Review {
   id                 String   @id @default(uuid())
   productId          String
-  product            Product  @relation(fields: [productId], references: [id])
   userId             String
-  user               User     @relation(fields: [userId], references: [id])
   rating             Int
   title              String?
   comment            String
@@ -59,4 +48,87 @@ model Review {
   isAnonymous        Boolean  @default(false)
   isVerifiedPurchase Boolean  @default(false)
   createdAt          DateTime @default(now())
+  product            Product  @relation(fields: [productId], references: [id])
+  user               User     @relation(fields: [userId], references: [id])
+}
+
+model CheckIn {
+  id        String   @id @default(uuid())
+  userId    String
+  mood      Int
+  note      String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model User {
+  id              String           @id @default(uuid())
+  email           String           @unique
+  name            String
+  passwordHash    String
+  createdAt       DateTime         @default(now())
+  pushToken       String?
+  checkIns        CheckIn[]
+  recommendations Recommendation[]
+  reviews         Review[]
+  routines        Routine[]
+  userProducts UserProduct[]
+  skinProfile     SkinProfile?
+}
+
+model Ingredient {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String
+  goodFor     String[]
+  category    String
+}
+
+model Recommendation {
+  id              String   @id @default(uuid())
+  userId          String
+  productId       String
+  reason          String
+  contextSnapshot Json
+  helpful         Boolean?
+  createdAt       DateTime @default(now())
+  product         Product  @relation(fields: [productId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
+}
+
+model Routine {
+  id        String        @id @default(uuid())
+  userId    String
+  name      String
+  timeOfDay String
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id])
+  steps     RoutineStep[]
+}
+
+model RoutineStep {
+  id             String  @id @default(uuid())
+  routineId      String
+  productId      String
+  stepOrder      Int
+  completedToday Boolean @default(false)
+  product        Product @relation(fields: [productId], references: [id])
+  routine        Routine @relation(fields: [routineId], references: [id])
+}
+
+model UserProduct {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  productId      String?
+  product        Product?  @relation(fields: [productId], references: [id])
+  customName     String?   // for products not in the catalog
+  customBrand    String?
+  openedAt       DateTime?
+  expiresAt      DateTime?
+  quantityTotal  Float?    // e.g. 50 (ml/g)
+  quantityUnit   String?   // "ml" | "g" | "uses"
+  quantityLeft   Float?    // current estimated remaining amount
+  isFinished     Boolean   @default(false)
+  createdAt      DateTime  @default(now())
 }

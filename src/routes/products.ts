@@ -1,26 +1,39 @@
-import express from 'express'
-import { prisma } from '../lib/prisma'
+import express from "express";
+import { prisma } from "../lib/prisma";
 
-const router = express.Router()
+const router = express.Router();
 
-router.get('/', async (req, res) => {
-  const { category, query } = req.query
+router.get("/", async (req, res) => {
+  const { category, query } = req.query;
 
   const products = await prisma.product.findMany({
     where: {
       ...(category ? { category: String(category) } : {}),
-      ...(query ? { name: { contains: String(query), mode: 'insensitive' } } : {}),
+      ...(query
+        ? { name: { contains: String(query), mode: "insensitive" } }
+        : {}),
     },
-    orderBy: { name: 'asc' },
-  })
+    orderBy: { name: "asc" },
+  });
 
-  res.json(products)
-})
+  res.json(products);
+});
 
-router.get('/:id', async (req, res) => {
-  const product = await prisma.product.findUnique({ where: { id: req.params.id } })
-  if (!product) return res.status(404).json({ error: 'Product not found' })
-  res.json(product)
-})
+router.get("/:id", async (req, res) => {
+  const product = await prisma.product.findUnique({
+    where: { id: req.params.id },
+  });
+  if (!product) return res.status(404).json({ error: "Product not found" });
+  res.json(product);
+});
 
-export default router
+router.get("/barcode/:code", async (req, res) => {
+  const product = await prisma.product.findUnique({
+    where: { barcode: req.params.code },
+  });
+  if (!product)
+    return res.status(404).json({ error: "No product found for this barcode" });
+  res.json(product);
+});
+
+export default router;
