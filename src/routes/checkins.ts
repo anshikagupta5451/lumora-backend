@@ -64,4 +64,44 @@ router.get("/history", requireAuth, async (req, res) => {
   res.json(checkIns);
 });
 
+router.get("/stats", requireAuth, async (req, res) => {
+  const userId = req.userId!;
+
+  const [streakData, totalCheckIns, userProducts, reviewCount] =
+    await Promise.all([
+      prisma.checkIn.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      }),
+      prisma.checkIn.count({ where: { userId } }),
+      prisma.userProduct.findMany({ where: { userId } }),
+      prisma.review.count({ where: { userId } }),
+    ]);
+
+  // Streak calculation (same logic as /streak)
+  let streak = 0;
+  let cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  const dayStrings = new Set(
+    streakData.map((c) => {
+      const d = new Date(c.createdAt);
+      d.setHours(0, 0, 0, 0);
+      return d.toISOString();
+    }),
+  );
+  while (dayStrings.has(cursor.toISOString())) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  res.json({
+    streak,
+    totalCheckIns,
+    productsOpened: userProducts.filter((p) => p.openedAt).length,
+    productsTracked: userProducts.length,
+    reviewsWritten: reviewCount,
+  });
+});
+
 export default router;

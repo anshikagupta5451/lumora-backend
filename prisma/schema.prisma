@@ -10,14 +10,15 @@ datasource db {
 model SkinProfile {
   id            String   @id @default(uuid())
   userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
   skinType      String
   concerns      String[]
   sensitivities String[]
   goals         String[]
   climateZone   String?
+  monthlyBudget Float?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [userId], references: [id])
 }
 
 model Product {
@@ -74,6 +75,9 @@ model User {
   routines        Routine[]
   userProducts UserProduct[]
   skinProfile     SkinProfile?
+  posts Post[]
+  postLikes PostLike[]
+  comments Comment[]
 }
 
 model Ingredient {
@@ -131,4 +135,39 @@ model UserProduct {
   quantityLeft   Float?    // current estimated remaining amount
   isFinished     Boolean   @default(false)
   createdAt      DateTime  @default(now())
+}
+
+model Post {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  content   String
+  tag       String?  // "General" | "Products" | "Question" etc.
+  likes     Int      @default(0)
+  createdAt DateTime @default(now())
+  postLikes PostLike[]
+  comments Comment[]
+}
+
+
+model PostLike {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId])
+}
+
+
+model Comment {
+  id        String   @id @default(uuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
 }

@@ -40,8 +40,10 @@ router.post("/generate", requireAuth, async (req, res) => {
       .json({ error: "Complete your skin assessment first" });
   }
 
-  // Simple rule-based matching for now — pulls products matching the user's concerns/skin type
-  // (Upgrade path: replace this block with pgvector similarity search once embeddings are ready to use here)
+  const { temp, condition, humidity } = req.body || {};
+
+  const allConcerns = [...skinProfile.concerns];
+
   const candidates = await prisma.product.findMany();
 
   const scored = candidates.map((p) => {
@@ -49,17 +51,23 @@ router.post("/generate", requireAuth, async (req, res) => {
     const text = `${p.name} ${p.ingredients.join(" ")}`.toLowerCase();
 
     if (
-      skinProfile.concerns.includes("acne") &&
+      allConcerns.some((c) => c.includes("acne")) &&
       (text.includes("salicylic") || text.includes("niacinamide"))
     )
       score += 2;
     if (
-      skinProfile.concerns.includes("dryness") &&
+      allConcerns.some((c) => c.includes("dry")) &&
       (text.includes("hyaluronic") || text.includes("ceramide"))
     )
       score += 2;
     if (
-      skinProfile.concerns.includes("dullness") &&
+      allConcerns.some(
+        (c) =>
+          c.includes("dark spot") ||
+          c.includes("pigment") ||
+          c.includes("uneven") ||
+          c.includes("dull"),
+      ) &&
       (text.includes("vitamin c") || text.includes("niacinamide"))
     )
       score += 2;
@@ -67,26 +75,70 @@ router.post("/generate", requireAuth, async (req, res) => {
     if (skinProfile.skinType === "dry" && p.category === "moisturizer")
       score += 1;
 
-    return { product: p, score };
+    let weatherReason = "";
+    if (typeof temp === "number") {
+      if (temp >= 28 && p.category === "sunscreen") {
+        score += 3;
+        weatherReason = `It's ${temp}°C today — sun protection matters more.`;
+      }
+      if (temp >= 28 && p.category === "moisturizer" && text.includes("gel")) {
+        score += 1;
+      }
+      if (
+        temp < 18 &&
+        (text.includes("ceramide") || text.includes("hyaluronic"))
+      ) {
+        score += 2;
+        weatherReason = `It's a cooler ${temp}°C — your skin likely needs extra hydration.`;
+      }
+    }
+    if (typeof humidity === "number") {
+      if (
+        humidity >= 70 &&
+        p.category === "serum" &&
+        text.includes("niacinamide")
+      ) {
+        score += 2;
+        weatherReason =
+          weatherReason ||
+          `Humidity is at ${humidity}% — an oil-controlling serum helps today.`;
+      }
+      if (
+        humidity < 40 &&
+        (text.includes("hyaluronic") || text.includes("glycerin"))
+      ) {
+        score += 2;
+        weatherReason =
+          weatherReason ||
+          `Low humidity (${humidity}%) means your skin needs more moisture support.`;
+      }
+    }
+
+    return { product: p, score, weatherReason };
   });
 
   scored.sort((a, b) => b.score - a.score);
-  const top = scored[0]?.product || candidates[0];
+  const top = scored[0];
 
   if (!top) {
-    return res
-      .status(404)
-      .json({ error: "No products available to recommend" });
+    return res.status(404).json({ error: "No products available" });
   }
 
-  const reason = `Based on your ${skinProfile.skinType} skin and focus on ${skinProfile.concerns.join(", ") || "general skincare"}, this product's ingredients align well with your goals.`;
+  const baseReason = `Based on your ${skinProfile.skinType} skin and focus on ${allConcerns.join(", ") || "general skincare"}, this product's ingredients align well with your goals.`;
+  const reason = top.weatherReason
+    ? `${top.weatherReason} ${baseReason}`
+    : baseReason;
 
   const rec = await prisma.recommendation.create({
     data: {
       userId: req.userId!,
-      productId: top.id,
+      productId: top.product.id,
       reason,
-      contextSnapshot: { skinProfile, timestamp: new Date().toISOString() },
+      contextSnapshot: {
+        skinProfile: JSON.parse(JSON.stringify(skinProfile)),
+        weather: { temp, condition, humidity },
+        timestamp: new Date().toISOString(),
+      },
     },
     include: { product: true },
   });
