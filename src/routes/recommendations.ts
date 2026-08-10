@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/requireAuth";
 const router = express.Router();
 
 function formatRecommendation(rec: any) {
+  const snapshot = rec.contextSnapshot as any;
   return {
     id: rec.id,
     productId: rec.productId,
@@ -12,6 +13,7 @@ function formatRecommendation(rec: any) {
     brand: rec.product.brand,
     reason: rec.reason,
     generatedAt: rec.createdAt,
+    weatherUsed: snapshot?.weather ?? null,
   };
 }
 
@@ -78,7 +80,7 @@ router.post("/generate", requireAuth, async (req, res) => {
     let weatherReason = "";
     if (typeof temp === "number") {
       if (temp >= 28 && p.category === "sunscreen") {
-        score += 3;
+        score += 5;
         weatherReason = `It's ${temp}°C today — sun protection matters more.`;
       }
       if (temp >= 28 && p.category === "moisturizer" && text.includes("gel")) {

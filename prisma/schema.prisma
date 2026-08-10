@@ -137,18 +137,6 @@ model UserProduct {
   createdAt      DateTime  @default(now())
 }
 
-model Post {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  content   String
-  tag       String?  // "General" | "Products" | "Question" etc.
-  likes     Int      @default(0)
-  createdAt DateTime @default(now())
-  postLikes PostLike[]
-  comments Comment[]
-}
-
 
 model PostLike {
   id        String   @id @default(uuid())
@@ -162,12 +150,28 @@ model PostLike {
 }
 
 
-model Comment {
-  id        String   @id @default(uuid())
-  postId    String
-  post      Post     @relation(fields: [postId], references: [id])
+model Post {
+  id        String    @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+  title     String?
   content   String
-  createdAt DateTime @default(now())
+  category  String    @default("General") // "General" | "Products" | "My Story" | "Study Hub" | "Challenges"
+  tags      String[]  @default([])
+  postLikes PostLike[]
+  comments  Comment[]
+  createdAt DateTime  @default(now())
+}
+
+model Comment {
+  id              String    @id @default(uuid())
+  postId          String
+  post            Post      @relation(fields: [postId], references: [id])
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  content         String
+  parentCommentId String?
+  parentComment   Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies         Comment[] @relation("CommentReplies")
+  createdAt       DateTime  @default(now())
 }

@@ -4,8 +4,19 @@ import { requireAuth } from "../middleware/requireAuth";
 
 const router = express.Router();
 
+const categories = [
+  "General",
+  "Products",
+  "My Story",
+  "Study Hub",
+  "Challenges",
+];
+
 router.get("/", requireAuth, async (req, res) => {
+  const { category } = req.query;
+
   const posts = await prisma.post.findMany({
+    where: category && category !== "All" ? { category: String(category) } : {},
     orderBy: { createdAt: "desc" },
     include: {
       user: { select: { name: true } },
@@ -18,8 +29,10 @@ router.get("/", requireAuth, async (req, res) => {
   res.json(
     posts.map((p) => ({
       id: p.id,
+      title: p.title,
       content: p.content,
-      tag: p.tag,
+      category: p.category,
+      tags: p.tags,
       likes: p._count.postLikes,
       commentCount: p._count.comments,
       likedByMe: p.postLikes.length > 0,
@@ -29,24 +42,54 @@ router.get("/", requireAuth, async (req, res) => {
   );
 });
 
+router.get("/:id", requireAuth, async (req, res) => {
+  const post = await prisma.post.findUnique({
+    where: { id: String(req.params.id) },
+    include: {
+      user: { select: { name: true } },
+      postLikes: { where: { userId: req.userId! }, select: { id: true } },
+      _count: { select: { postLikes: true, comments: true } },
+    },
+  });
+  if (!post) return res.status(404).json({ error: "Post not found" });
+
+  res.json({
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    category: post.category,
+    tags: post.tags,
+    likes: post._count.postLikes,
+    commentCount: post._count.comments,
+    likedByMe: post.postLikes.length > 0,
+    createdAt: post.createdAt,
+    authorName: post.user.name,
+  });
+});
+
 router.post("/", requireAuth, async (req, res) => {
-  const { content, tag } = req.body;
+  const { title, content, category, tags } = req.body;
   if (!content?.trim())
     return res.status(400).json({ error: "Content required" });
 
   const post = await prisma.post.create({
     data: {
       userId: req.userId!,
+      title: title?.trim() || null,
       content: content.trim(),
-      tag: tag || "General",
+      category: categories.includes(category) ? category : "General",
+      tags: Array.isArray(tags) ? tags : [],
     },
     include: { user: { select: { name: true } } },
   });
   res.status(201).json({
     id: post.id,
+    title: post.title,
     content: post.content,
-    tag: post.tag,
+    category: post.category,
+    tags: post.tags,
     likes: 0,
+    commentCount: 0,
     likedByMe: false,
     createdAt: post.createdAt,
     authorName: post.user.name,
@@ -61,36 +104,45 @@ router.post("/:id/like", requireAuth, async (req, res) => {
     where: { userId_postId: { userId, postId } },
   });
 
-  if (existing) {
-    // Already liked — unlike it (toggle off)
-    await prisma.postLike.delete({ where: { id: existing.id } });
-  } else {
-    // Not liked yet — like it
-    await prisma.postLike.create({ data: { userId, postId } });
+  try {
+    if (existing) {
+      await prisma.postLike.delete({ where: { id: existing.id } });
+    } else {
+      await prisma.postLike.create({ data: { userId, postId } });
+    }
+  } catch (err: any) {
   }
 
   const likeCount = await prisma.postLike.count({ where: { postId } });
-  res.json({ likes: likeCount, likedByMe: !existing });
+  const stillLiked = await prisma.postLike.findUnique({
+    where: { userId_postId: { userId, postId } },
+  });
+
+  res.json({ likes: likeCount, likedByMe: Boolean(stillLiked) });
 });
 
+// Comments — threaded
 router.get("/:id/comments", requireAuth, async (req, res) => {
+  const postId = String(req.params.id);
   const comments = await prisma.comment.findMany({
-    where: { postId: String(req.params.id) },
+    where: { postId },
     orderBy: { createdAt: "asc" },
     include: { user: { select: { name: true } } },
   });
-  res.json(
-    comments.map((c) => ({
-      id: c.id,
-      content: c.content,
-      createdAt: c.createdAt,
-      authorName: c.user.name,
-    })),
-  );
+
+  const formatted = comments.map((c) => ({
+    id: c.id,
+    content: c.content,
+    parentCommentId: c.parentCommentId,
+    createdAt: c.createdAt,
+    authorName: c.user.name,
+  }));
+
+  res.json(formatted);
 });
 
 router.post("/:id/comments", requireAuth, async (req, res) => {
-  const { content } = req.body;
+  const { content, parentCommentId } = req.body;
   if (!content?.trim())
     return res.status(400).json({ error: "Content required" });
 
@@ -99,12 +151,14 @@ router.post("/:id/comments", requireAuth, async (req, res) => {
       postId: String(req.params.id),
       userId: req.userId!,
       content: content.trim(),
+      parentCommentId: parentCommentId || null,
     },
     include: { user: { select: { name: true } } },
   });
   res.status(201).json({
     id: comment.id,
     content: comment.content,
+    parentCommentId: comment.parentCommentId,
     createdAt: comment.createdAt,
     authorName: comment.user.name,
   });
