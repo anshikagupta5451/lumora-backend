@@ -161,6 +161,7 @@ model Post {
   postLikes PostLike[]
   comments  Comment[]
   createdAt DateTime  @default(now())
+  images: string[];
 }
 
 model Comment {
@@ -170,6 +171,7 @@ model Comment {
   userId          String
   user            User      @relation(fields: [userId], references: [id])
   content         String
+  isAnonymous     Boolean   @default(false)
   parentCommentId String?
   parentComment   Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
   replies         Comment[] @relation("CommentReplies")

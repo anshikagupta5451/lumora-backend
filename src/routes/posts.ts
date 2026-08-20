@@ -29,6 +29,37 @@ router.get("/", requireAuth, async (req, res) => {
   res.json(
     posts.map((p) => ({
       id: p.id,
+      userId: p.userId,
+      title: p.title,
+      content: p.content,
+      category: p.category,
+      tags: p.tags,
+      likes: p._count.postLikes,
+      commentCount: p._count.comments,
+      likedByMe: p.postLikes.length > 0,
+      createdAt: p.createdAt,
+      authorName: p.user.name,
+    })),
+  );
+});
+
+// IMPORTANT: this route must come before GET /:id, otherwise "mine" gets
+// treated as a post ID and this handler is never reached.
+router.get("/mine/all", requireAuth, async (req, res) => {
+  const posts = await prisma.post.findMany({
+    where: { userId: req.userId! },
+    orderBy: { createdAt: "desc" },
+    include: {
+      user: { select: { name: true } },
+      postLikes: { where: { userId: req.userId! }, select: { id: true } },
+      _count: { select: { postLikes: true, comments: true } },
+    },
+  });
+
+  res.json(
+    posts.map((p) => ({
+      id: p.id,
+      userId: p.userId,
       title: p.title,
       content: p.content,
       category: p.category,
@@ -55,6 +86,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 
   res.json({
     id: post.id,
+    userId: post.userId,
     title: post.title,
     content: post.content,
     category: post.category,
@@ -84,6 +116,7 @@ router.post("/", requireAuth, async (req, res) => {
   });
   res.status(201).json({
     id: post.id,
+    userId: post.userId,
     title: post.title,
     content: post.content,
     category: post.category,
@@ -110,8 +143,7 @@ router.post("/:id/like", requireAuth, async (req, res) => {
     } else {
       await prisma.postLike.create({ data: { userId, postId } });
     }
-  } catch (err: any) {
-  }
+  } catch (err: any) {}
 
   const likeCount = await prisma.postLike.count({ where: { postId } });
   const stillLiked = await prisma.postLike.findUnique({
@@ -121,28 +153,28 @@ router.post("/:id/like", requireAuth, async (req, res) => {
   res.json({ likes: likeCount, likedByMe: Boolean(stillLiked) });
 });
 
-// Comments — threaded
+// Comments — threaded, anonymous-aware
 router.get("/:id/comments", requireAuth, async (req, res) => {
-  const postId = String(req.params.id);
   const comments = await prisma.comment.findMany({
-    where: { postId },
+    where: { postId: String(req.params.id) },
     orderBy: { createdAt: "asc" },
-    include: { user: { select: { name: true } } },
+    include: { user: { select: { id: true, name: true } } },
   });
 
-  const formatted = comments.map((c) => ({
-    id: c.id,
-    content: c.content,
-    parentCommentId: c.parentCommentId,
-    createdAt: c.createdAt,
-    authorName: c.user.name,
-  }));
-
-  res.json(formatted);
+  res.json(
+    comments.map((c) => ({
+      id: c.id,
+      content: c.content,
+      parentCommentId: c.parentCommentId,
+      createdAt: c.createdAt,
+      authorId: c.isAnonymous ? null : c.userId,
+      authorName: c.isAnonymous ? "Anonymous" : c.user.name,
+    })),
+  );
 });
 
 router.post("/:id/comments", requireAuth, async (req, res) => {
-  const { content, parentCommentId } = req.body;
+  const { content, parentCommentId, isAnonymous } = req.body;
   if (!content?.trim())
     return res.status(400).json({ error: "Content required" });
 
@@ -152,15 +184,17 @@ router.post("/:id/comments", requireAuth, async (req, res) => {
       userId: req.userId!,
       content: content.trim(),
       parentCommentId: parentCommentId || null,
+      isAnonymous: Boolean(isAnonymous),
     },
-    include: { user: { select: { name: true } } },
+    include: { user: { select: { id: true, name: true } } },
   });
   res.status(201).json({
     id: comment.id,
     content: comment.content,
     parentCommentId: comment.parentCommentId,
     createdAt: comment.createdAt,
-    authorName: comment.user.name,
+    authorId: comment.isAnonymous ? null : comment.userId,
+    authorName: comment.isAnonymous ? "Anonymous" : comment.user.name,
   });
 });
 

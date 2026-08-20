@@ -41,4 +41,20 @@ router.post("/push-token", requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+
+router.get('/:id/public', requireAuth, async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { id: String(req.params.id) },
+    select: { id: true, name: true, createdAt: true },
+  })
+  if (!user) return res.status(404).json({ error: 'User not found' })
+
+  const [postCount, reviewCount] = await Promise.all([
+    prisma.post.count({ where: { userId: user.id } }),
+    prisma.review.count({ where: { userId: user.id } }),
+  ])
+
+  res.json({ id: user.id, name: user.name, memberSince: user.createdAt, postCount, reviewCount })
+})
+
 export default router;
