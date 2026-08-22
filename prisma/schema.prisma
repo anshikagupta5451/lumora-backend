@@ -143,7 +143,7 @@ model PostLike {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   postId    String
-  post      Post     @relation(fields: [postId], references: [id])
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
   @@unique([userId, postId])
@@ -151,23 +151,23 @@ model PostLike {
 
 
 model Post {
-  id        String    @id @default(uuid())
+  id        String     @id @default(uuid())
   userId    String
-  user      User      @relation(fields: [userId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
   title     String?
   content   String
-  category  String    @default("General") // "General" | "Products" | "My Story" | "Study Hub" | "Challenges"
-  tags      String[]  @default([])
+  category  String     @default("General") // "General" | "Products" | "My Story" | "Study Hub" | "Challenges"
+  tags      String[]   @default([])
   postLikes PostLike[]
   comments  Comment[]
-  createdAt DateTime  @default(now())
-  images: string[];
+  createdAt DateTime   @default(now())
+  images    String[]   @default([])
 }
 
 model Comment {
   id              String    @id @default(uuid())
   postId          String
-  post            Post      @relation(fields: [postId], references: [id])
+  post            Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
   userId          String
   user            User      @relation(fields: [userId], references: [id])
   content         String

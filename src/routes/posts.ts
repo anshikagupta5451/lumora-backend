@@ -1,6 +1,7 @@
 import express from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/requireAuth";
+import { deleteImagesFromSupabase } from "../lib/supabase";
 
 const router = express.Router();
 
@@ -11,6 +12,8 @@ const categories = [
   "Study Hub",
   "Challenges",
 ];
+
+const MAX_IMAGES = 6;
 
 router.get("/", requireAuth, async (req, res) => {
   const { category } = req.query;
@@ -34,6 +37,7 @@ router.get("/", requireAuth, async (req, res) => {
       content: p.content,
       category: p.category,
       tags: p.tags,
+      images: p.images, // ADDED
       likes: p._count.postLikes,
       commentCount: p._count.comments,
       likedByMe: p.postLikes.length > 0,
@@ -64,6 +68,7 @@ router.get("/mine/all", requireAuth, async (req, res) => {
       content: p.content,
       category: p.category,
       tags: p.tags,
+      images: p.images, // ADDED
       likes: p._count.postLikes,
       commentCount: p._count.comments,
       likedByMe: p.postLikes.length > 0,
@@ -91,6 +96,7 @@ router.get("/:id", requireAuth, async (req, res) => {
     content: post.content,
     category: post.category,
     tags: post.tags,
+    images: post.images, // ADDED
     likes: post._count.postLikes,
     commentCount: post._count.comments,
     likedByMe: post.postLikes.length > 0,
@@ -100,7 +106,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 });
 
 router.post("/", requireAuth, async (req, res) => {
-  const { title, content, category, tags } = req.body;
+  const { title, content, category, tags, images } = req.body;
   if (!content?.trim())
     return res.status(400).json({ error: "Content required" });
 
@@ -111,6 +117,9 @@ router.post("/", requireAuth, async (req, res) => {
       content: content.trim(),
       category: categories.includes(category) ? category : "General",
       tags: Array.isArray(tags) ? tags : [],
+      images: Array.isArray(images)
+        ? images.filter((u: unknown) => typeof u === "string").slice(0, MAX_IMAGES)
+        : [], // ADDED
     },
     include: { user: { select: { name: true } } },
   });
@@ -121,12 +130,38 @@ router.post("/", requireAuth, async (req, res) => {
     content: post.content,
     category: post.category,
     tags: post.tags,
+    images: post.images, // ADDED
     likes: 0,
     commentCount: 0,
     likedByMe: false,
     createdAt: post.createdAt,
     authorName: post.user.name,
   });
+});
+
+router.delete("/:id", requireAuth, async (req, res) => {
+  const postId = String(req.params.id);
+
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    select: { userId: true, images: true },
+  });
+  if (!post) return res.status(404).json({ error: "Post not found" });
+  if (post.userId !== req.userId) {
+    return res.status(403).json({ error: "You can only delete your own posts" });
+  }
+
+  // Clean up Supabase Storage first — if this fails we still proceed
+  // with deleting the post itself (see comment in
+  // deleteImagesFromSupabase for why).
+  await deleteImagesFromSupabase(post.images);
+
+  // Requires onDelete: Cascade on Comment.post and PostLike.post in
+  // schema.prisma, otherwise this throws a foreign-key constraint error.
+  // See SCHEMA_FIX.md.
+  await prisma.post.delete({ where: { id: postId } });
+
+  res.json({ success: true });
 });
 
 router.post("/:id/like", requireAuth, async (req, res) => {

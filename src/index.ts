@@ -15,6 +15,7 @@ import usersRouter from './routes/users'
 import userProductsRouter from './routes/userProducts'
 import postsRouter from './routes/posts'
 import weatherRouter from './routes/weather'
+import uploadsRouter from "./routes/uploads";
 
 dotenv.config();
 
@@ -39,6 +40,7 @@ app.use('/routine-steps', routineStepsRouter)
 app.use('/user-products', userProductsRouter)
 app.use('/posts', postsRouter)
 app.use('/weather', weatherRouter)
+app.use('/uploads', uploadsRouter)
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
