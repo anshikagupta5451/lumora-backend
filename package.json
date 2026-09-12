@@ -4,7 +4,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "seed:bounties": "tsx prisma/seedBounties.ts"
   },
   "keywords": [],
   "author": "",

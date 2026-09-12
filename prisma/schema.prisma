@@ -78,6 +78,32 @@ model User {
   posts Post[]
   postLikes PostLike[]
   comments Comment[]
+  bookmarks Bookmark[]
+  reports   Report[]
+  bountyCompletions BountyCompletion[]
+}
+
+model Bounty {
+  id           String             @id @default(uuid())
+  key          String?            @unique // stable identifier used to auto-complete from app actions
+  title        String
+  description  String
+  rewardPoints Int                @default(0)
+  active       Boolean            @default(true)
+  expiresAt    DateTime?
+  createdAt    DateTime           @default(now())
+  completions  BountyCompletion[]
+}
+
+model BountyCompletion {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  bountyId  String
+  bounty    Bounty   @relation(fields: [bountyId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, bountyId])
 }
 
 model Ingredient {
@@ -149,6 +175,31 @@ model PostLike {
   @@unique([userId, postId])
 }
 
+model Bookmark {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId])
+}
+
+model Report {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reason    String?
+  createdAt DateTime @default(now())
+
+  // One report per user per post — repeated taps update nothing, they
+  // just confirm "already reported" instead of spamming duplicate rows.
+  @@unique([userId, postId])
+}
+
 
 model Post {
   id        String     @id @default(uuid())
@@ -160,6 +211,8 @@ model Post {
   tags      String[]   @default([])
   postLikes PostLike[]
   comments  Comment[]
+  bookmarks Bookmark[]
+  reports   Report[]
   createdAt DateTime   @default(now())
   images    String[]   @default([])
 }

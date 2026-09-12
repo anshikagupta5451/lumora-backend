@@ -1,6 +1,7 @@
 import express from 'express'
 import { prisma } from '../lib/prisma'
 import { requireAuth } from '../middleware/requireAuth'
+import { awardBounty } from '../lib/bounties'
 
 const router = express.Router()
 
@@ -13,6 +14,8 @@ router.post('/', requireAuth, async (req, res) => {
     update: { skinType, concerns, sensitivities, goals, climateZone },
     create: { userId, skinType, concerns, sensitivities, goals, climateZone },
   })
+
+  await awardBounty(userId, 'skin_assessment')
 
   res.json(profile)
 })

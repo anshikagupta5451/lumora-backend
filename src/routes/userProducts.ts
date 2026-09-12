@@ -18,6 +18,7 @@ router.post("/", requireAuth, async (req, res) => {
     productId,
     customName,
     customBrand,
+    category,
     openedAt,
     expiresAt,
     quantityTotal,
@@ -30,10 +31,27 @@ router.post("/", requireAuth, async (req, res) => {
       .json({ error: "Either productId or customName is required" });
   }
 
+  // A custom (not-from-catalog) product still needs a real Product row —
+  // routines, reviews, etc. all reference products by id, and a shelf item
+  // with no linked product would silently be invisible to those features.
+  let finalProductId = productId || null;
+  if (!finalProductId && customName) {
+    const created = await prisma.product.create({
+      data: {
+        name: customName,
+        brand: customBrand || "Custom",
+        category: category || "skincare",
+        ingredients: [],
+        price: 0,
+      },
+    });
+    finalProductId = created.id;
+  }
+
   const item = await prisma.userProduct.create({
     data: {
       userId: req.userId!,
-      productId: productId || null,
+      productId: finalProductId,
       customName: customName || null,
       customBrand: customBrand || null,
       openedAt: openedAt ? new Date(openedAt) : null,

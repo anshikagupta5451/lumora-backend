@@ -1,6 +1,7 @@
 import express from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/requireAuth";
+import { awardBounty } from "../lib/bounties";
 
 const router = express.Router();
 
@@ -59,6 +60,8 @@ router.post("/", requireAuth, async (req, res) => {
     },
     include: { steps: { include: { product: true } } },
   });
+
+  await awardBounty(req.userId!, "first_routine");
 
   res.status(201).json(routine);
 });
