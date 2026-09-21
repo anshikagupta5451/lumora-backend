@@ -2,6 +2,7 @@ import express from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/requireAuth";
 import { awardBounty } from "../lib/bounties";
+import { deleteImagesFromSupabase } from "../lib/supabase";
 
 const router = express.Router();
 
@@ -33,13 +34,16 @@ async function getCurrentStreak(userId: string) {
 }
 
 router.post("/", requireAuth, async (req, res) => {
-  const { mood, note } = req.body;
+  const { mood, note, images } = req.body;
   if (!mood || mood < 1 || mood > 5) {
     return res.status(400).json({ error: "Mood must be between 1 and 5" });
   }
+  if (images !== undefined && (!Array.isArray(images) || images.length > 6 || images.some((image) => typeof image !== "string"))) {
+    return res.status(400).json({ error: "Images must be an array of up to 6 URLs" });
+  }
 
   const checkIn = await prisma.checkIn.create({
-    data: { userId: req.userId!, mood, note: note || null },
+    data: { userId: req.userId!, mood, note: note || null, images: images || [] },
   });
 
   const streak = await getCurrentStreak(req.userId!);
@@ -60,7 +64,7 @@ function isSameDay(a: Date, b: Date) {
 
 router.patch("/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
-  const { mood, note } = req.body;
+  const { mood, note, images } = req.body;
 
   const checkIn = await prisma.checkIn.findUnique({ where: { id } });
   if (!checkIn || checkIn.userId !== req.userId) {
@@ -72,12 +76,16 @@ router.patch("/:id", requireAuth, async (req, res) => {
   if (mood !== undefined && (mood < 1 || mood > 5)) {
     return res.status(400).json({ error: "Mood must be between 1 and 5" });
   }
+  if (images !== undefined && (!Array.isArray(images) || images.length > 6 || images.some((image) => typeof image !== "string"))) {
+    return res.status(400).json({ error: "Images must be an array of up to 6 URLs" });
+  }
 
   const updated = await prisma.checkIn.update({
     where: { id },
     data: {
       ...(mood !== undefined ? { mood } : {}),
       ...(note !== undefined ? { note: note || null } : {}),
+      ...(images !== undefined ? { images } : {}),
     },
   });
   res.json(updated);
@@ -92,6 +100,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
   }
 
   await prisma.checkIn.delete({ where: { id } });
+  await deleteImagesFromSupabase(checkIn.images);
   res.json({ success: true });
 });
 

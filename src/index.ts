@@ -17,6 +17,7 @@ import postsRouter from './routes/posts'
 import weatherRouter from './routes/weather'
 import uploadsRouter from "./routes/uploads";
 import bountiesRouter from "./routes/bounties";
+import faceScanRouter from "./routes/faceScan";
 
 dotenv.config();
 
@@ -43,6 +44,7 @@ app.use('/posts', postsRouter)
 app.use('/weather', weatherRouter)
 app.use('/uploads', uploadsRouter)
 app.use('/bounties', bountiesRouter)
+app.use('/face-scan', faceScanRouter)
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

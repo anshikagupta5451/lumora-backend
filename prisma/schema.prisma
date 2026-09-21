@@ -7,6 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model FaceScan {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  imageUrl    String
+  imageWidth  Int?     // orientation-corrected pixel dimensions of the stored
+  imageHeight Int?     // photo, needed to place `detections` boxes on screen
+  concerns    Json     // { source: "ai" | "heuristic", items: ConcernScore[], detections: Detection[] }
+  createdAt   DateTime @default(now())
+}
+
 model SkinProfile {
   id            String   @id @default(uuid())
   userId        String   @unique
@@ -58,6 +69,7 @@ model CheckIn {
   userId    String
   mood      Int
   note      String?
+  images    String[] @default([])
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
 }
@@ -69,6 +81,7 @@ model User {
   passwordHash    String
   createdAt       DateTime         @default(now())
   pushToken       String?
+  isPremium       Boolean          @default(false)
   checkIns        CheckIn[]
   recommendations Recommendation[]
   reviews         Review[]
@@ -81,6 +94,7 @@ model User {
   bookmarks Bookmark[]
   reports   Report[]
   bountyCompletions BountyCompletion[]
+  faceScans FaceScan[]
 }
 
 model Bounty {

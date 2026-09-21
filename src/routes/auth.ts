@@ -38,7 +38,7 @@ router.post("/signup", async (req, res) => {
     .json({
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: { id: user.id, email: user.email, name: user.name, isPremium: user.isPremium },
     });
 });
 
@@ -70,7 +70,7 @@ router.post("/login", async (req, res) => {
   res.json({
     accessToken,
     refreshToken,
-    user: { id: user.id, email: user.email },
+    user: { id: user.id, email: user.email, name: user.name, isPremium: user.isPremium },
   });
 });
 

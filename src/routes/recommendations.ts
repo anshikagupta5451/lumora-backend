@@ -1,6 +1,8 @@
 import express from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/requireAuth";
+import { CONCERN_DEFS, ConcernKey } from "../lib/skinConcerns";
+import { ConcernScore } from "../lib/faceAnalysis";
 
 const router = express.Router();
 
@@ -146,6 +148,82 @@ router.post("/generate", requireAuth, async (req, res) => {
   });
 
   res.status(201).json(formatRecommendation(rec));
+});
+
+// GET /recommendations/from-scan — turns the caller's latest face scan
+// into concern-by-concern guidance: free tips (always shown, since the
+// app isn't selling anything yet), a nudge to use a product they
+// already own if it fits, and up to two catalog matches within their
+// stated monthly budget (skinProfile.monthlyBudget), excluding
+// anything they've already logged as owned.
+router.get("/from-scan", requireAuth, async (req, res) => {
+  const userId = req.userId!;
+
+  const [scan, skinProfile, userProducts, products] = await Promise.all([
+    prisma.faceScan.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } }),
+    prisma.skinProfile.findUnique({ where: { userId } }),
+    prisma.userProduct.findMany({ where: { userId }, include: { product: true } }),
+    prisma.product.findMany(),
+  ]);
+
+  if (!scan) {
+    return res
+      .status(400)
+      .json({ error: "Scan your face first to get recommendations" });
+  }
+
+  const storedConcerns = scan.concerns as unknown as { source: string; items: ConcernScore[] };
+  const detectedConcerns = storedConcerns.items
+    .filter((c) => c.detected)
+    .sort((a, b) => b.score - a.score);
+
+  const budget = skinProfile?.monthlyBudget ?? null;
+  const ownedProductIds = new Set(
+    userProducts.map((up) => up.productId).filter((id): id is string => Boolean(id)),
+  );
+
+  const concerns = detectedConcerns.map((concern) => {
+    const def = CONCERN_DEFS[concern.key as ConcernKey];
+
+    const ownedMatch = userProducts.find((up) => {
+      const text = `${up.product?.name ?? up.customName ?? ""} ${up.product?.ingredients?.join(" ") ?? ""}`.toLowerCase();
+      return def.keywords.some((k) => text.includes(k));
+    });
+
+    const suggestedProducts = products
+      .filter((p) => !ownedProductIds.has(p.id))
+      .filter((p) => (budget ? p.price <= budget : true))
+      .filter((p) => {
+        const text = `${p.name} ${p.ingredients.join(" ")}`.toLowerCase();
+        return def.keywords.some((k) => text.includes(k));
+      })
+      .sort((a, b) => a.price - b.price)
+      .slice(0, 2)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        brand: p.brand,
+        price: p.price,
+        category: p.category,
+      }));
+
+    return {
+      key: concern.key,
+      label: def.label,
+      score: concern.score,
+      freeTips: def.freeTips,
+      ownedMatch: ownedMatch
+        ? {
+            id: ownedMatch.id,
+            name: ownedMatch.product?.name ?? ownedMatch.customName ?? "Your product",
+            brand: ownedMatch.product?.brand ?? ownedMatch.customBrand ?? "",
+          }
+        : null,
+      suggestedProducts,
+    };
+  });
+
+  res.json({ concerns, budget, generatedAt: scan.createdAt });
 });
 
 router.post("/:id/feedback", requireAuth, async (req, res) => {
