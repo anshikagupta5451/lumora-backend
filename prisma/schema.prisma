@@ -15,6 +15,7 @@ model FaceScan {
   imageWidth  Int?     // orientation-corrected pixel dimensions of the stored
   imageHeight Int?     // photo, needed to place `detections` boxes on screen
   concerns    Json     // { source: "ai" | "heuristic", items: ConcernScore[], detections: Detection[] }
+  webSuggestions Json? // cached "From the web" product suggestions for this scan: { budget, generatedAt, grounded, sources, concerns }
   createdAt   DateTime @default(now())
 }
 
@@ -41,6 +42,7 @@ model Product {
   price       Float
   imageUrl    String?
   barcode     String?  @unique  // NEW
+  isPromoted  Boolean  @default(false) // shown first (labelled "Featured") in scan suggestions
   createdAt   DateTime @default(now())
   reviews     Review[]
   routineSteps RoutineStep[]
@@ -78,7 +80,11 @@ model User {
   id              String           @id @default(uuid())
   email           String           @unique
   name            String
-  passwordHash    String
+  passwordHash    String?
+  googleId        String?          @unique
+  avatarUrl       String?
+  resetCodeHash       String?
+  resetCodeExpiresAt  DateTime?
   createdAt       DateTime         @default(now())
   pushToken       String?
   isPremium       Boolean          @default(false)

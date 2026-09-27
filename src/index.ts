@@ -1,6 +1,8 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import authRouter from "./routes/auth";
 import skinProfileRouter from "./routes/skinProfile";
 import productsRouter from "./routes/products";
@@ -18,8 +20,7 @@ import weatherRouter from './routes/weather'
 import uploadsRouter from "./routes/uploads";
 import bountiesRouter from "./routes/bounties";
 import faceScanRouter from "./routes/faceScan";
-
-dotenv.config();
+import adminRouter from "./routes/admin";
 
 const app = express();
 app.use(cors());
@@ -45,6 +46,7 @@ app.use('/weather', weatherRouter)
 app.use('/uploads', uploadsRouter)
 app.use('/bounties', bountiesRouter)
 app.use('/face-scan', faceScanRouter)
+app.use('/admin', adminRouter)
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

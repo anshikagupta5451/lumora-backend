@@ -19,9 +19,11 @@
     "dotenv": "^17.4.2",
     "expo-server-sdk": "^7.0.0",
     "express": "^5.2.1",
+    "google-auth-library": "^11.1.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "node-cron": "^4.6.0",
+    "resend": "^6.28.1",
     "sharp": "^0.35.4"
   },
   "devDependencies": {
