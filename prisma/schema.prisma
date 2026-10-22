@@ -151,6 +151,7 @@ model Routine {
   userId    String
   name      String
   timeOfDay String
+  isShared  Boolean       @default(false) // opted in to the community Shared Routines list
   createdAt DateTime      @default(now())
   user      User          @relation(fields: [userId], references: [id])
   steps     RoutineStep[]
