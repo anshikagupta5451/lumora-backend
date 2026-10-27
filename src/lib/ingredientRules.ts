@@ -55,8 +55,17 @@ export function ingredientText(ingredients: string[], name = "") {
   return `${name} ${ingredients.join(", ")}`.toLowerCase();
 }
 
+// A needle must start a word: "ethanol" matches "ethanol" but not
+// "triethanolamine", and "oat" doesn't match "coat".
+function startsWordIn(text: string, needle: string): boolean {
+  for (let i = text.indexOf(needle); i !== -1; i = text.indexOf(needle, i + 1)) {
+    if (i === 0 || !/[a-z0-9]/.test(text[i - 1]!)) return true;
+  }
+  return false;
+}
+
 export function findAny(text: string, needles: string[]): string | null {
-  return needles.find((n) => text.includes(n)) ?? null;
+  return needles.find((n) => startsWordIn(text, n)) ?? null;
 }
 
 export function sensitivityHits(text: string, sensitivities: string[]): IngredientHit[] {

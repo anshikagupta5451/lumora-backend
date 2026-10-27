@@ -3,12 +3,14 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+// `prisma generate` doesn't need a database, so only set the datasource when
+// the URL exists; commands that do need it fail with Prisma's own message.
+const url = process.env["DATABASE_URL"];
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
-  datasource: {
-    url: process.env["DATABASE_URL"],
-  },
+  ...(url ? { datasource: { url } } : {}),
 });

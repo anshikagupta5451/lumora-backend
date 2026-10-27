@@ -5,14 +5,23 @@ Express 5 + Prisma (PostgreSQL) REST API for the Lumora app. TypeScript, run wit
 ## Run
 
 ```bash
-npm install
-npx prisma migrate deploy   # or: npx prisma migrate dev
-npm run seed                # catalog + ingredients
-npm run seed:bounties       # bounty definitions
-npm run dev                 # http://localhost:4000, GET /health to check
+cp .env.example .env         # then fill it in (see Environment)
+npm install                  # also runs `prisma generate` for this OS
+npx prisma migrate deploy    # or: npx prisma migrate dev
+npm run seed                 # catalog + ingredients (run once: it isn't idempotent)
+npm run seed:bounties        # bounty definitions (safe to re-run)
+npm run dev                  # http://localhost:4000, GET /health to check
 ```
 
-There is no `build` or `start` script yet; `npm run dev` is the only entry point.
+| Script | What |
+| --- | --- |
+| `npm start` | Run without watch mode (deployment). No build step: `tsx` runs the TypeScript |
+| `npm test` | Unit tests for the rule engines and AI-output validation (`node:test`, no database or network) |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run seed:demo` | Demo users and content for showing the app; replaces earlier demo data. Log in as `demo@demo.lumora.app` / `Demo@1234` |
+| `npm run unseed:demo` | Remove every `@demo.lumora.app` user and everything they own. Catalog products stay |
+
+If the server crashes with "Prisma Client could not locate the Query Engine", `node_modules` was installed on another OS: run `npx prisma generate`.
 
 ## Environment
 
@@ -23,6 +32,7 @@ Put these in `.env`. Everything except the database and JWT secrets is optional,
 | `DATABASE_URL` | Prisma (read in `prisma.config.ts`) | Server won't start |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | Auth tokens | Auth fails |
 | `PORT` | Listen port | 4000 |
+| `TZ` | Server timezone for the 8 pm streak reminder and "checked in today" | `Asia/Kolkata` for the cron; `startOfDay` uses the host timezone |
 | `GOOGLE_WEB_CLIENT_ID` | Verifying Google ID tokens. Must equal the app's `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Google sign-in fails |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Password-reset emails | Reset code is logged to the console |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET_NAME` | Image uploads | Uploads fail |
@@ -35,7 +45,7 @@ Put these in `.env`. Everything except the database and JWT secrets is optional,
 
 | Mount | What it does |
 | --- | --- |
-| `/auth` | signup, login, Google, forgot/reset password |
+| `/auth` | signup, login, Google, token refresh, forgot/reset password |
 | `/users` | me, update me, public profile, push token |
 | `/skin-profile` | onboarding profile, budget |
 | `/products` | catalog, barcode lookup, popular, verdict |
@@ -67,5 +77,6 @@ Put these in `.env`. Everything except the database and JWT secrets is optional,
 
 ## Known issues
 
-- `npx tsc --noEmit` reports one error: `prisma.config.ts` passes `process.env.DATABASE_URL` (possibly `undefined`) where a `string` is required. It doesn't stop `tsx` from running.
-- No tests.
+- Refresh tokens are stateless JWTs: there is no server-side revocation list, so logging out doesn't invalidate a stolen refresh token before it expires (30 days).
+- The heuristic face-scan ranges in `faceAnalysis.ts` were tuned before a bug (2026-10-27) made every region read whole-photo stats. They may need retuning against real selfies.
+- Route handlers have no automated tests; `npm test` covers the `src/lib` rules.

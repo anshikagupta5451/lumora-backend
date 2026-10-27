@@ -139,6 +139,32 @@ router.post("/google", async (req, res) => {
   });
 });
 
+// POST /auth/refresh — swaps a valid refresh token for a new token pair, so
+// the app can keep a session alive past the 15-minute access token.
+router.post("/refresh", async (req, res) => {
+  const { refreshToken } = req.body ?? {};
+  if (typeof refreshToken !== "string" || !refreshToken) {
+    return res.status(400).json({ error: "refreshToken required" });
+  }
+
+  let userId: string;
+  try {
+    const payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET!) as { userId?: unknown };
+    if (typeof payload.userId !== "string") throw new Error("no userId");
+    userId = payload.userId;
+  } catch {
+    return res.status(401).json({ error: "Your session has expired. Please log in again" });
+  }
+
+  // A deleted account must not be able to mint new tokens.
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!user) {
+    return res.status(401).json({ error: "Your session has expired. Please log in again" });
+  }
+
+  res.json(issueTokens(user.id));
+});
+
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
 

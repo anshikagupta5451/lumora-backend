@@ -4,8 +4,14 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "tsx --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "prisma generate",
     "seed": "tsx prisma/seed.ts",
-    "seed:bounties": "tsx prisma/seedBounties.ts"
+    "seed:bounties": "tsx prisma/seedBounties.ts",
+    "seed:demo": "tsx prisma/seedDemo.ts",
+    "unseed:demo": "tsx prisma/seedDemo.ts --remove"
   },
   "keywords": [],
   "author": "",

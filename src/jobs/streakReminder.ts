@@ -4,6 +4,10 @@ import { prisma } from "../lib/prisma";
 
 const expo = new Expo();
 
+// Cloud hosts usually run in UTC; without this the "8 pm" nudge lands at
+// 1:30 am in India. Set TZ on the host too so "today" below matches.
+const TIMEZONE = process.env.TZ || "Asia/Kolkata";
+
 export function startStreakReminderJob() {
   cron.schedule("0 20 * * *", async () => {
     const startOfDay = new Date();
@@ -41,5 +45,5 @@ export function startStreakReminderJob() {
         console.error("Push send error:", err);
       }
     }
-  });
+  }, { timezone: TIMEZONE });
 }

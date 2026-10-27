@@ -4,7 +4,7 @@ Instructions for AI coding agents working in the Lumora backend. Humans: see [RE
 
 ## 1. Stack
 
-**Express 5 + Prisma 6 + PostgreSQL (Neon)**, TypeScript run directly with `tsx` (`npm run dev`). CommonJS modules, `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`. There is no build step and no test runner.
+**Express 5 + Prisma 6 + PostgreSQL (Neon)**, TypeScript run directly with `tsx` (`npm run dev`). CommonJS modules, `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`. There is no build step. Tests use Node's built-in `node:test` (`npm test`, files in `test/`); don't add Jest or Vitest.
 
 - Express **5**: async handlers that throw or reject are forwarded to the error handler automatically. Don't add `express-async-handler` or wrap every route in try/catch just for that.
 - Prisma **6**: use `@prisma/client` through the shared instance in `src/lib/prisma.ts`. Never `new PrismaClient()` anywhere else. The `prisma-upgrade-v7` skill exists for a future upgrade. Don't upgrade as a side effect.
@@ -22,6 +22,8 @@ Prisma skills live in `.agents/skills/` (also reachable as `.claude/skills/`). L
 | `src/jobs/` | `node-cron` jobs |
 | `prisma/schema.prisma`, `prisma/migrations/` | Schema and migration history |
 | `prisma/seed.ts`, `prisma/seedBounties.ts` | Catalog/ingredient and bounty seeds |
+| `prisma/seedDemo.ts` | Demo users/content, all owned by `@demo.lumora.app` users (`seed:demo`, `unseed:demo`) |
+| `test/` | Unit tests for `src/lib` (pure functions only: no DB, no network) |
 
 Keep route files thin. Anything with rules or scoring belongs in `src/lib/` (see `productVerdict.ts`, `dailyBrief.ts`).
 
@@ -62,7 +64,8 @@ Gemini is used only in `src/lib/geminiVision.ts` (face scan) and `src/lib/webPro
 ## 7. Before finishing
 
 ```bash
-npx tsc --noEmit   # one known error in prisma.config.ts; there must be no new ones
+npx tsc --noEmit   # must be clean
+npm test           # must pass; add a test when you change a rule in src/lib
 ```
 
 If you changed a route, say which endpoints and whether you exercised them (for example with `curl` against `npm run dev`). Report what you verified and what you didn't.

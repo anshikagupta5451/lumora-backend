@@ -116,6 +116,10 @@ This is casual skincare guidance, not a medical or dermatological diagnosis — 
 Return exactly one "concerns" entry per concern key listed above.`;
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
 interface GeminiConcernItem {
   key: string;
   score: number;
@@ -192,14 +196,19 @@ async function attemptAnalysis(
 
     const scores = CONCERN_KEYS.map((key) => {
       const item = items.find((i) => i.key === key);
-      const score = Math.max(0, Math.min(100, Math.round(item?.score ?? 0)));
+      // Model output is untrusted: a non-number score counts as 0, and
+      // `detected` is derived from the clamped score so the two can't disagree.
+      const raw = Number(item?.score);
+      const score = Number.isFinite(raw) ? clamp(Math.round(raw), 0, 100) : 0;
       const result: ConcernScore = {
         key,
         label: CONCERN_DEFS[key as ConcernKey].label,
         score,
-        detected: item?.detected ?? score >= DETECTION_THRESHOLD,
+        detected: score >= DETECTION_THRESHOLD,
       };
-      if (item?.reasoning) result.reasoning = item.reasoning;
+      if (typeof item?.reasoning === "string" && item.reasoning) {
+        result.reasoning = item.reasoning.slice(0, 500);
+      }
       return result;
     });
 
@@ -209,13 +218,15 @@ async function attemptAnalysis(
         (d): d is GeminiDetectionItem =>
           LOCALIZABLE_KEYS.includes(d?.key as ConcernKey) &&
           Array.isArray(d.box_2d) &&
-          d.box_2d.length === 4,
+          d.box_2d.length === 4 &&
+          d.box_2d.every((v) => typeof v === "number" && Number.isFinite(v)),
       )
       .slice(0, MAX_DETECTIONS)
       .map((d) => ({
         key: d.key as ConcernKey,
-        box: d.box_2d as [number, number, number, number],
-        note: d.note || "",
+        // Boxes are in Gemini's 0-1000 normalised space; keep them on-image.
+        box: d.box_2d.map((v) => clamp(Math.round(v), 0, 1000)) as [number, number, number, number],
+        note: typeof d.note === "string" ? d.note.slice(0, 200) : "",
       }));
 
     return { scores, detections };

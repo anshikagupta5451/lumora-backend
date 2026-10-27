@@ -36,9 +36,6 @@ export const supabase = createClient(
 
 const BUCKET = process.env.SUPABASE_BUCKET_NAME || "post-images";
 
-console.log("[debug] SUPABASE_URL:", process.env.SUPABASE_URL);
-console.log("[debug] KEY starts with sb_secret_:", process.env.SUPABASE_SERVICE_ROLE_KEY?.startsWith("sb_secret_"));
-
 /**
  * Uploads a single image buffer to Supabase Storage under
  * posts/{userId}/{uuid}.{ext} and returns its public URL.

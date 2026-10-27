@@ -104,11 +104,21 @@ interface RegionStats {
   grayStdev: number;
 }
 
+// sharp's stats() describes the pipeline's *input* and ignores extract(),
+// greyscale() and convolve(), so every region used to get whole-photo
+// numbers. Render the pipeline to raw pixels first, then measure those.
+async function renderedStats(pipeline: sharp.Sharp) {
+  const { data, info } = await pipeline.raw().toBuffer({ resolveWithObject: true });
+  return sharp(data, {
+    raw: { width: info.width, height: info.height, channels: info.channels },
+  }).stats();
+}
+
 async function statsFor(
   base: sharp.Sharp,
   r: Region,
 ): Promise<RegionStats> {
-  const { channels } = await base.clone().extract(r).stats();
+  const { channels } = await renderedStats(base.clone().extract(r));
   const [rc, gc, bc] = channels as [
     (typeof channels)[number],
     (typeof channels)[number],
@@ -127,12 +137,13 @@ async function statsFor(
 // texture roughness (flakier/drier skin tends to show more local
 // contrast under camera lighting than smooth, well-hydrated skin).
 async function roughnessFor(base: sharp.Sharp, r: Region): Promise<number> {
-  const { channels } = await base
-    .clone()
-    .extract(r)
-    .greyscale()
-    .convolve({ width: 3, height: 3, kernel: [0, -1, 0, -1, 4, -1, 0, -1, 0] })
-    .stats();
+  const { channels } = await renderedStats(
+    base
+      .clone()
+      .extract(r)
+      .greyscale()
+      .convolve({ width: 3, height: 3, kernel: [0, -1, 0, -1, 4, -1, 0, -1, 0] }),
+  );
   return channels[0]!.mean;
 }
 

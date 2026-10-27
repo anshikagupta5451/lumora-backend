@@ -487,6 +487,8 @@ function pickProduct(input: BriefInput, need: Need): BriefPick | null {
 
   const ownedBest = input.owned
     .filter((up) => !isExpired(up, input.now))
+    .filter((up) => !(up.productId && input.dislikedProductIds.has(up.productId)))
+    .filter((up) => !conflictsWithSensitivities(ownedText(up), skinProfile.sensitivities))
     .map((up) => ({ up, score: matchScore(ownedText(up), up.product?.category ?? null, need) }))
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)[0];

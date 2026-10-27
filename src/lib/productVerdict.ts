@@ -372,6 +372,10 @@ export function buildVerdict(input: VerdictInput): Verdict {
   } else if (caution >= 2 || (caution >= 1 && good === 0)) {
     overall = "caution";
     headline = "Check before you buy";
+  } else if (good === 0) {
+    // Only info notes (no ingredient list, price or reviews): nothing to judge.
+    overall = "unknown";
+    headline = "Not enough info to judge this one yet";
   } else {
     overall = "good";
     headline = "Good fit";
