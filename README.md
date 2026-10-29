@@ -49,7 +49,7 @@ Put these in `.env`. Everything except the database and JWT secrets is optional,
 | `/auth` | signup, login, Google, token refresh, forgot/reset password |
 | `/users` | me, update me, public profile, push token |
 | `/skin-profile` | onboarding profile, budget |
-| `/products` | catalog, barcode lookup, popular, verdict |
+| `/products` | catalog, barcode lookup, popular, verdict with match %, photo-scan match, AI identify (`POST /products/identify`) |
 | `/user-products` | the user's shelf |
 | `/reviews` | product reviews |
 | `/checkins` | mood check-ins, streak, history, stats |
@@ -72,6 +72,7 @@ Put these in `.env`. Everything except the database and JWT secrets is optional,
 | `src/lib/productVerdict.ts`, `ingredientRules.ts` | Rule-based "Is this right for me?" |
 | `src/lib/geminiVision.ts`, `faceAnalysis.ts` | Face scan: Gemini first, then the heuristic fallback |
 | `src/lib/scanSuggestions.ts`, `webProductSearch.ts` | Scan suggestions from the user's shelf, the catalog, or the web |
+| `src/lib/aiProductLookup.ts` | Gemini identifies a product missing from the catalog and Open Beauty Facts and finds its ingredients (cached; skipped without `GEMINI_API_KEY`) |
 | `src/lib/openBeautyFacts.ts` | Admin product prefill |
 | `src/lib/bounties.ts` | Completing a bounty by its stable `key` |
 | `src/jobs/streakReminder.ts` | 20:00 daily cron: push reminder to users who haven't checked in |

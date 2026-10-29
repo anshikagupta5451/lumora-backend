@@ -1,7 +1,8 @@
 // "Is this right for me?" — a rule-based verdict on one product for one
 // user, for someone standing in a shop with the product in hand. Every
 // check cites the concrete reason (an ingredient, a product they own, a
-// number), and nothing here calls an AI model.
+// number), and nothing here calls an AI model. The match percentage and
+// per-concern bars are computed from the same checks.
 
 import type { Product, SkinProfile, UserProduct } from "@prisma/client";
 import { CONCERN_DEFS, ConcernKey } from "./skinConcerns";
@@ -25,10 +26,27 @@ export interface VerdictCheck {
   detail: string;
 }
 
+// How well the product addresses one of the user's concerns.
+export interface ConcernFit {
+  label: string;
+  percent: number | null; // null when the ingredient list is unknown
+  fromScan: boolean;
+  reason: string;
+}
+
+// "78% match for you": a number that sums up the checks below it. Null
+// without a skin profile or an ingredient list, since there's nothing to
+// score then. Budget is left out, like in the overall verdict.
+export interface MatchScore {
+  percent: number | null;
+  concerns: ConcernFit[];
+}
+
 export interface Verdict {
   overall: "great" | "good" | "caution" | "avoid" | "unknown";
   headline: string;
   checks: VerdictCheck[];
+  match: MatchScore;
 }
 
 export interface VerdictProduct {
@@ -286,6 +304,67 @@ function communityCheck(input: VerdictInput): VerdictCheck {
   };
 }
 
+// Onboarding concerns that are the same thing as a face-scan concern, so
+// "acne" from the quiz and "Acne & breakouts" from a scan show one bar.
+const PROFILE_TO_SCAN: Record<string, ConcernKey> = {
+  acne: "acne",
+  pigmentation: "darkSpots",
+  dryness: "dryness",
+  dullness: "dullness",
+};
+
+// More of the ingredients known to target a concern means a better fit.
+// Ingredient amounts aren't on labels, so this counts, it doesn't weigh.
+const FIT_BY_HITS = [10, 70, 85, 95];
+
+function concernFits(text: string, hasIngredients: boolean, input: VerdictInput): ConcernFit[] {
+  const wanted: { label: string; keywords: string[]; fromScan: boolean; key: string }[] = [];
+  for (const key of input.scanConcerns) {
+    const def = CONCERN_DEFS[key];
+    wanted.push({ key, label: def.label, keywords: def.keywords, fromScan: true });
+  }
+  for (const c of input.profile?.concerns ?? []) {
+    const name = c.toLowerCase();
+    const def = PROFILE_CONCERNS[name];
+    const key = PROFILE_TO_SCAN[name] ?? name;
+    if (!def || wanted.some((w) => w.key === key)) continue;
+    const label = def.label.charAt(0).toUpperCase() + def.label.slice(1);
+    wanted.push({ key, label, keywords: def.keywords, fromScan: false });
+  }
+
+  return wanted.map(({ label, keywords, fromScan }) => {
+    if (!hasIngredients) {
+      return { label, percent: null, fromScan, reason: "Ingredient list unknown" };
+    }
+    const hits = keywords.filter((k) => findAny(text, [k]));
+    return {
+      label,
+      percent: FIT_BY_HITS[Math.min(hits.length, FIT_BY_HITS.length - 1)]!,
+      fromScan,
+      reason: hits.length
+        ? `Has ${hits.slice(0, 3).join(", ")}`
+        : `Nothing in it targets ${label.toLowerCase()}`,
+    };
+  });
+}
+
+// Starts from how well it targets your concerns (45–88), or 70 when you
+// have none, then moves with the other checks. A sensitivity hit caps it
+// low whatever else is good about the product.
+function matchPercent(checks: VerdictCheck[], concerns: ConcernFit[]): number {
+  const fits = concerns.map((c) => c.percent).filter((p): p is number => p != null);
+  let score = fits.length ? 40 + fits.reduce((s, p) => s + p, 0) / fits.length / 2 : 70;
+
+  for (const c of checks) {
+    if (c.kind === "skinType") score += c.status === "good" ? 10 : -15;
+    if (c.kind === "sensitivity" && c.status === "good") score += 5;
+    if (c.kind === "clash") score -= 10;
+    if (c.kind === "community") score += c.status === "good" ? 5 : c.status === "caution" ? -10 : 0;
+  }
+  if (checks.some((c) => c.kind === "sensitivity" && c.status === "bad")) score = Math.min(score, 15);
+  return Math.round(Math.max(0, Math.min(100, score)));
+}
+
 const ORDER: Record<CheckStatus, number> = { bad: 0, caution: 1, good: 2, info: 3 };
 
 export function buildVerdict(input: VerdictInput): Verdict {
@@ -386,5 +465,11 @@ export function buildVerdict(input: VerdictInput): Verdict {
     headline = "Good for your skin, but over budget";
   }
 
-  return { overall, headline, checks };
+  const concerns = concernFits(text, hasIngredients, input);
+  const match: MatchScore = {
+    percent: profile && hasIngredients ? matchPercent(checks, concerns) : null,
+    concerns,
+  };
+
+  return { overall, headline, checks, match };
 }
