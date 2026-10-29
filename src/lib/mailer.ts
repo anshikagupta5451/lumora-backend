@@ -12,6 +12,7 @@ import { Resend } from "resend";
 const apiKey = process.env.RESEND_API_KEY;
 const resend = apiKey ? new Resend(apiKey) : null;
 const FROM = process.env.EMAIL_FROM || "Lumora <onboarding@resend.dev>";
+const REPLY_TO = process.env.EMAIL_REPLY_TO;
 
 export async function sendPasswordResetEmail(email: string, code: string) {
   if (!resend) {
@@ -22,6 +23,7 @@ export async function sendPasswordResetEmail(email: string, code: string) {
   const { error } = await resend.emails.send({
     from: FROM,
     to: email,
+    ...(REPLY_TO ? { replyTo: REPLY_TO } : {}),
     subject: "Your Lumora password reset code",
     html: `
       <p>Use this code to reset your Lumora password:</p>
