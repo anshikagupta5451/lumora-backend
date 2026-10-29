@@ -317,3 +317,93 @@ describe("overall verdict", () => {
     },
   );
 });
+
+describe("match percentage and concern bars", () => {
+  test("is null without a skin profile or an ingredient list, since there's nothing to score", () => {
+    assert.equal(buildVerdict(input({ profile: null })).match.percent, null);
+    const noList = buildVerdict(input({ profile: profile({ concerns: ["acne"] }), product: { ingredients: [] } }));
+    assert.equal(noList.match.percent, null);
+    assert.deepEqual(noList.match.concerns, [
+      { label: "Acne", percent: null, fromScan: false, reason: "Ingredient list unknown" },
+    ]);
+  });
+
+  test("one bar per concern, scored by how many targeting ingredients it has", () => {
+    const v = buildVerdict(
+      input({
+        profile: profile({ concerns: ["acne", "dryness", "fine lines"] }),
+        product: { ingredients: ["Aqua", "Salicylic Acid", "Niacinamide", "Zinc PCA", "Glycerin"] },
+      }),
+    );
+    assert.deepEqual(
+      v.match.concerns.map((c) => [c.label, c.percent]),
+      [["Acne", 95], ["Dryness", 70], ["Fine lines", 10]],
+    );
+    assert.equal(v.match.concerns[0]!.reason, "Has salicylic acid, niacinamide, zinc");
+    assert.equal(v.match.concerns[2]!.reason, "Nothing in it targets fine lines");
+  });
+
+  test("a concern from both the quiz and a face scan shows one bar, marked as from the scan", () => {
+    const v = buildVerdict(
+      input({
+        profile: profile({ concerns: ["acne", "pigmentation"] }),
+        scanConcerns: ["acne", "darkSpots"],
+        product: { ingredients: ["Niacinamide"] },
+      }),
+    );
+    assert.deepEqual(
+      v.match.concerns.map((c) => [c.label, c.fromScan]),
+      [["Acne & breakouts", true], ["Dark spots & pigmentation", true]],
+    );
+  });
+
+  test("a product that targets your concerns and suits your skin scores high", () => {
+    const v = buildVerdict(
+      input({
+        profile: profile({ skinType: "oily", concerns: ["acne"] }),
+        product: { ingredients: ["Aqua", "Salicylic Acid", "Niacinamide"] },
+      }),
+    );
+    assert.ok(v.match.percent! >= 85, `got ${v.match.percent}`);
+  });
+
+  test("a plain product that doesn't target your concerns lands in the middle, not at zero", () => {
+    const v = buildVerdict(input({ profile: profile({ concerns: ["acne"] }), product: { ingredients: ["Aqua", "Glycerin"] } }));
+    assert.equal(v.match.percent, 45);
+  });
+
+  test("an ingredient you're sensitive to caps the match at 15%, however good the rest is", () => {
+    const v = buildVerdict(
+      input({
+        profile: profile({ skinType: "oily", concerns: ["acne"], sensitivities: ["Fragrance"] }),
+        product: { ingredients: ["Salicylic Acid", "Niacinamide", "Zinc", "Parfum"] },
+      }),
+    );
+    assert.equal(v.overall, "avoid");
+    assert.ok(v.match.percent! <= 15, `got ${v.match.percent}`);
+  });
+
+  test("a clash with something on your shelf lowers it", () => {
+    const retinol = catalogProduct({ id: "p-ret", name: "Retinol Serum", ingredients: ["Retinol"] });
+    const alone = buildVerdict(input({ product: { ingredients: ["Glycolic Acid"] } })).match.percent!;
+    const clashing = buildVerdict(input({ product: { ingredients: ["Glycolic Acid"] }, owned: [owned(retinol)] })).match.percent!;
+    assert.equal(alone - clashing, 10);
+  });
+
+  test("budget doesn't change it: being over budget is about money, not your skin", () => {
+    const fits = buildVerdict(input({ profile: profile({ monthlyBudget: 1000 }), product: { price: 300 } }));
+    const over = buildVerdict(input({ profile: profile({ monthlyBudget: 1000 }), product: { price: 3000 } }));
+    assert.equal(fits.match.percent, over.match.percent);
+  });
+
+  test("always stays an integer between 0 and 100", () => {
+    const v = buildVerdict(
+      input({
+        profile: profile({ skinType: "sensitive", concerns: ["acne", "dryness", "dullness"] }),
+        product: { ingredients: ["Glycolic Acid", "Alcohol Denat"] },
+        community: { count: 5, avg: 1.5, sameSkinCount: 3, sameSkinAvg: 1.5 },
+      }),
+    );
+    assert.ok(Number.isInteger(v.match.percent) && v.match.percent! >= 0 && v.match.percent! <= 100);
+  });
+});

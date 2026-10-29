@@ -1,7 +1,8 @@
 import express from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/requireAuth";
-import { barcodeVariants, lookupBarcode, searchProducts } from "../lib/openBeautyFacts";
+import { barcodeVariants, lookupBarcode, ProductDraft, searchProducts } from "../lib/openBeautyFacts";
+import { aiLookupAvailable, lookupProductWithAi } from "../lib/aiProductLookup";
 import { MIN_MATCH_SCORE, ReadLine, ReadText } from "../lib/productMatch";
 import { buildVerdict, CommunityStats, VerdictProduct } from "../lib/productVerdict";
 import { detectedConcerns } from "../lib/scanSuggestions";
@@ -101,8 +102,8 @@ async function verdictFor(userId: string, product: VerdictProduct) {
 }
 
 // GET /products/barcode/:code/check — the in-shop "Is this right for me?"
-// flow. Looks in our catalog first, then Open Beauty Facts, so it works
-// for products nobody has added yet.
+// flow. Looks in our catalog first, then Open Beauty Facts, then asks the
+// AI (aiProductLookup.ts), so it works for products nobody has added yet.
 router.get("/barcode/:code/check", requireAuth, async (req, res) => {
   const code = String(req.params.code);
   const product = await prisma.product.findFirst({
@@ -124,25 +125,53 @@ router.get("/barcode/:code/check", requireAuth, async (req, res) => {
     });
   }
 
-  let draft;
+  let draft: ProductDraft | null = null;
+  let obfFailed = false;
   try {
     draft = await lookupBarcode(code);
   } catch {
-    return res.status(502).json({ error: "Couldn't look this product up right now — try again" });
-  }
-  if (!draft) {
-    return res.status(404).json({ error: "We couldn't find this product" });
+    obfFailed = true;
   }
 
-  const verdict = await verdictFor(req.userId!, {
+  // OBF often knows the name but not the ingredients; ask the AI for those.
+  if (draft && draft.ingredients.length < 3) {
+    const ai = await lookupProductWithAi({ text: `${draft.brand} ${draft.name}` });
+    if (ai) {
+      return res.json(
+        await checkResult(req.userId!, "ai", { ...draft, ingredients: ai.ingredients, category: draft.category ?? ai.category }, ai.sources),
+      );
+    }
+  }
+  if (draft) return res.json(await checkResult(req.userId!, "openbeautyfacts", draft));
+
+  const ai = await lookupProductWithAi({ barcode: code });
+  if (ai) {
+    return res.json(
+      await checkResult(req.userId!, "ai", { ...ai, barcode: code, imageUrl: null, quantity: null }, ai.sources),
+    );
+  }
+  if (obfFailed) {
+    return res.status(502).json({ error: "Couldn't look this product up right now — try again" });
+  }
+  res.status(404).json({ error: "We couldn't find this product" });
+});
+
+// The check response for a product that isn't in our catalog.
+async function checkResult(
+  userId: string,
+  source: "openbeautyfacts" | "ai",
+  draft: ProductDraft,
+  sources: { title: string; url: string }[] = [],
+) {
+  const verdict = await verdictFor(userId, {
     id: null,
     name: draft.name,
     category: draft.category,
     ingredients: draft.ingredients,
     price: null,
   });
-  res.json({
-    source: "openbeautyfacts",
+  return {
+    source,
     product: {
       id: null,
       name: draft.name,
@@ -151,10 +180,44 @@ router.get("/barcode/:code/check", requireAuth, async (req, res) => {
       ingredients: draft.ingredients,
       price: null,
       imageUrl: draft.imageUrl,
-      barcode: code,
+      barcode: draft.barcode,
     },
     verdict,
-  });
+    sources,
+  };
+}
+
+// POST /products/identify — for when the photo scanner (or a typed
+// search) found nothing in our catalog or Open Beauty Facts. Body is the
+// same as /match. The AI names the product and finds its ingredients; the
+// verdict on it is still the rule-based one.
+router.post("/identify", requireAuth, async (req, res) => {
+  const body = req.body ?? {};
+  const text = Array.isArray(body.lines)
+    ? body.lines
+        .filter((l: any) => typeof l?.text === "string" && l.text.trim())
+        .slice(0, 80)
+        .sort((a: any, b: any) => (Number(b.size) || 1) - (Number(a.size) || 1))
+        .slice(0, 25)
+        .map((l: any) => String(l.text).trim().slice(0, 120))
+        .join("\n")
+    : typeof body.query === "string"
+      ? body.query.trim().slice(0, 300)
+      : "";
+  if (text.length < 3) {
+    return res.status(400).json({ error: "We couldn't read any text — try again with the name in view" });
+  }
+  if (!aiLookupAvailable()) {
+    return res.status(404).json({ error: "We couldn't find this product — try searching by its name" });
+  }
+
+  const ai = await lookupProductWithAi({ text });
+  if (!ai) {
+    return res.status(404).json({
+      error: "We couldn't identify this product — try a clearer photo of the front, or search by its name",
+    });
+  }
+  res.json(await checkResult(req.userId!, "ai", { ...ai, barcode: null, imageUrl: null, quantity: null }, ai.sources));
 });
 
 // POST /products/match — the photo scanner. Body is either `lines` (text

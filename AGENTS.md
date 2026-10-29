@@ -39,7 +39,7 @@ Keep route files thin. Anything with rules or scoring belongs in `src/lib/` (see
 
 ## 4. AI features
 
-Gemini is used only in `src/lib/geminiVision.ts` (face scan) and `src/lib/webProductSearch.ts` (web suggestions).
+Gemini is used only in `src/lib/geminiVision.ts` (face scan), `src/lib/webProductSearch.ts` (web suggestions) and `src/lib/aiProductLookup.ts` (name and ingredients of a product missing from the catalog and Open Beauty Facts; the verdict on it stays rule-based).
 
 - Prefer rules. Don't add a new model call unless the task asks for one.
 - Every model call needs a non-AI fallback, or must hide the feature, when `GEMINI_API_KEY` is missing or the quota is spent. `faceAnalysis.ts` is the reference fallback.
