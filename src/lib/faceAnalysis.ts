@@ -3,9 +3,10 @@
 // This is NOT real face detection — there is no model here identifying
 // where a face actually is in the frame. Instead it trusts that the
 // capture screen (face-scan.tsx) gets the user to align their face
-// inside an on-screen oval guide, and reads fixed, pre-defined regions
-// of the resulting photo that correspond to where eyes/cheeks/forehead
-// land for a well-aligned shot. Each concern score comes from simple
+// inside an on-screen oval guide; the route crops the photo to that oval
+// (ovalCropRect) and this reads fixed, pre-defined regions of the crop
+// that correspond to where eyes/cheeks/forehead land for a well-aligned
+// shot. Each concern score comes from simple
 // pixel statistics (brightness, color-channel balance, local contrast)
 // in those regions, mapped onto a 0-100 scale using range constants
 // that were picked by eyeballing sample photos, not trained on data.
@@ -45,20 +46,59 @@ interface Region {
   height: number;
 }
 
-// Calibrated against the oval guide in face-scan.tsx — a portrait oval
-// centered in frame. These fractions ([xFrom, xTo, yFrom, yTo], all 0-1)
-// approximate where each feature lands for a well-aligned selfie. Kept as
+// The oval guide in face-scan.tsx, as fractions of the camera preview:
+// width = 64% of the screen width, height = 1.35x its width, top = 16%
+// of the screen height, horizontally centered. Keep in sync with the app.
+const OVAL_WIDTH = 0.64;
+const OVAL_HEIGHT_PER_WIDTH = 1.35;
+const OVAL_TOP = 0.16;
+
+// Screen width / height of the phone the photo was taken on. Older app
+// builds don't send it; this is a typical modern phone (~9:20).
+export const DEFAULT_PREVIEW_ASPECT = 0.45;
+
+// The camera preview fills the screen ("cover"), so it only shows the
+// middle of the photo when the photo's aspect differs from the screen's.
+// Maps the on-screen oval onto the photo's pixels, so the analysis, the
+// stored photo and the markers all use just the face the user aligned.
+export function ovalCropRect(
+  imageWidth: number,
+  imageHeight: number,
+  previewAspect: number,
+): Region {
+  const imageAspect = imageWidth / imageHeight;
+  const visibleWidth = imageAspect > previewAspect ? imageHeight * previewAspect : imageWidth;
+  const visibleHeight = imageAspect > previewAspect ? imageHeight : imageWidth / previewAspect;
+  const offsetX = (imageWidth - visibleWidth) / 2;
+  const offsetY = (imageHeight - visibleHeight) / 2;
+
+  const width = OVAL_WIDTH * visibleWidth;
+  const height = Math.min(imageHeight, width * OVAL_HEIGHT_PER_WIDTH);
+  const left = Math.round(offsetX + ((1 - OVAL_WIDTH) / 2) * visibleWidth);
+  const top = Math.round(Math.min(offsetY + OVAL_TOP * visibleHeight, imageHeight - height));
+  return {
+    left,
+    top,
+    width: Math.max(1, Math.min(Math.round(width), imageWidth - left)),
+    height: Math.max(1, Math.min(Math.round(height), imageHeight - top)),
+  };
+}
+
+// Where each feature lands inside the oval for a well-aligned selfie
+// (the photo is cropped to the oval's bounding box first, see
+// ovalCropRect): hairline near the top edge, chin near the bottom, cheeks
+// near the sides. Fractions are [xFrom, xTo, yFrom, yTo], all 0-1. Kept as
 // the single source of truth so both the pixel-region extraction below
 // and the approximate on-photo markers in getHeuristicDetections stay in
 // sync.
 const REGION_FRACTIONS = {
-  forehead: [0.35, 0.65, 0.16, 0.28],
-  leftUnderEye: [0.3, 0.42, 0.39, 0.46],
-  rightUnderEye: [0.58, 0.7, 0.39, 0.46],
-  leftCheek: [0.24, 0.4, 0.5, 0.64],
-  rightCheek: [0.6, 0.76, 0.5, 0.64],
-  tZone: [0.44, 0.56, 0.4, 0.56],
-  chin: [0.42, 0.58, 0.74, 0.85],
+  forehead: [0.3, 0.7, 0.1, 0.26],
+  leftUnderEye: [0.22, 0.4, 0.47, 0.54],
+  rightUnderEye: [0.6, 0.78, 0.47, 0.54],
+  leftCheek: [0.16, 0.34, 0.56, 0.72],
+  rightCheek: [0.66, 0.84, 0.56, 0.72],
+  tZone: [0.44, 0.56, 0.42, 0.62],
+  chin: [0.4, 0.6, 0.86, 0.95],
 } satisfies Record<string, [number, number, number, number]>;
 
 type RegionName = keyof typeof REGION_FRACTIONS;

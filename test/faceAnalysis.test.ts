@@ -5,7 +5,12 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
-import { analyzeFaceImage, getHeuristicDetections, type ConcernScore } from "../src/lib/faceAnalysis";
+import {
+  analyzeFaceImage,
+  getHeuristicDetections,
+  ovalCropRect,
+  type ConcernScore,
+} from "../src/lib/faceAnalysis";
 import { CONCERN_DEFS, CONCERN_KEYS, DETECTION_THRESHOLD, type ConcernKey } from "../src/lib/skinConcerns";
 
 const W = 600;
@@ -14,13 +19,13 @@ type RGB = [number, number, number];
 
 // Same fractions as REGION_FRACTIONS in faceAnalysis.ts: [xFrom, xTo, yFrom, yTo].
 const R = {
-  forehead: [0.35, 0.65, 0.16, 0.28],
-  leftUnderEye: [0.3, 0.42, 0.39, 0.46],
-  rightUnderEye: [0.58, 0.7, 0.39, 0.46],
-  leftCheek: [0.24, 0.4, 0.5, 0.64],
-  rightCheek: [0.6, 0.76, 0.5, 0.64],
-  tZone: [0.44, 0.56, 0.4, 0.56],
-  chin: [0.42, 0.58, 0.74, 0.85],
+  forehead: [0.3, 0.7, 0.1, 0.26],
+  leftUnderEye: [0.22, 0.4, 0.47, 0.54],
+  rightUnderEye: [0.6, 0.78, 0.47, 0.54],
+  leftCheek: [0.16, 0.34, 0.56, 0.72],
+  rightCheek: [0.66, 0.84, 0.56, 0.72],
+  tZone: [0.44, 0.56, 0.42, 0.62],
+  chin: [0.4, 0.6, 0.86, 0.95],
 } as const;
 type RegionName = keyof typeof R;
 
@@ -167,16 +172,16 @@ describe("getHeuristicDetections", () => {
     const d = getHeuristicDetections([score("darkCircles", true)]);
     assert.equal(d.length, 2);
     assert.ok(d.every((x) => x.key === "darkCircles" && x.note === "Under-eye area"));
-    // leftUnderEye fractions [0.3, 0.42, 0.39, 0.46] → [ymin, xmin, ymax, xmax] on a 0-1000 scale.
-    assert.deepEqual(d[0]!.box, [390, 300, 460, 420]);
-    assert.deepEqual(d[1]!.box, [390, 580, 460, 700]);
+    // leftUnderEye fractions [0.22, 0.4, 0.47, 0.54] → [ymin, xmin, ymax, xmax] on a 0-1000 scale.
+    assert.deepEqual(d[0]!.box, [470, 220, 540, 400]);
+    assert.deepEqual(d[1]!.box, [470, 600, 540, 780]);
   });
 
   test("marks cheeks + forehead for dark spots and cheeks + chin for acne", () => {
     const d = getHeuristicDetections([score("darkSpots", true), score("acne", true)]);
     assert.equal(d.filter((x) => x.key === "darkSpots").length, 3);
     assert.equal(d.filter((x) => x.key === "acne").length, 3);
-    assert.ok(d.some((x) => x.key === "acne" && x.box[0] === 740), "acne should include the chin box");
+    assert.ok(d.some((x) => x.key === "acne" && x.box[0] === 860), "acne should include the chin box");
   });
 
   test("never draws boxes for whole-face concerns (dryness, oiliness, dullness)", () => {
@@ -191,6 +196,38 @@ describe("getHeuristicDetections", () => {
       const [ymin, xmin, ymax, xmax] = box;
       assert.ok(box.every((v) => Number.isInteger(v) && v >= 0 && v <= 1000));
       assert.ok(ymin < ymax && xmin < xmax);
+    }
+  });
+});
+
+describe("ovalCropRect", () => {
+  test("on a tall phone, crops the oval from the middle of a 3:4 photo the preview only partly shows", () => {
+    // 3000x4000 photo, 0.45 screen: the preview shows x 600-2400 (1800 wide), all 4000 rows.
+    const r = ovalCropRect(3000, 4000, 0.45);
+    assert.equal(r.width, 1152); // 64% of the 1800 px the preview shows
+    assert.equal(r.left, 924); // 600 + 18% of 1800
+    assert.equal(r.top, 640); // 16% of 4000
+    assert.equal(r.height, 1555); // 1.35x the width
+  });
+
+  test("when the photo and screen have the same shape, matches the oval's screen fractions", () => {
+    const r = ovalCropRect(1000, 2000, 0.5);
+    assert.deepEqual(r, { left: 180, top: 320, width: 640, height: 864 });
+  });
+
+  test("on a screen wider than the photo, the preview crops top and bottom instead", () => {
+    // 1000x2000 photo on a 0.75 screen: the preview shows rows 667-1333 (1333 tall).
+    const r = ovalCropRect(1000, 2000, 0.75);
+    assert.equal(r.left, 180);
+    assert.equal(r.width, 640);
+    assert.equal(r.top, Math.round(333.33 + 0.16 * 1333.33));
+  });
+
+  test("always stays inside the photo", () => {
+    for (const [w, h, a] of [[3000, 4000, 0.45], [4000, 3000, 0.45], [600, 800, 1.5], [100, 100, 0.3]] as const) {
+      const r = ovalCropRect(w, h, a);
+      assert.ok(r.left >= 0 && r.top >= 0 && r.width >= 1 && r.height >= 1);
+      assert.ok(r.left + r.width <= w && r.top + r.height <= h, `out of bounds for ${w}x${h} @ ${a}`);
     }
   });
 });
